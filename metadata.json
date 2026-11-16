@@ -1,0 +1,6 @@
+{
+  "name": "Penjualan & Rekonsiliasi",
+  "description": "Aplikasi Admin Penjualan, Impor Rekap, Pencocokan Pembayaran Many-to-Many, dan Rekonsiliasi FINOPS_SHARED_V1.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

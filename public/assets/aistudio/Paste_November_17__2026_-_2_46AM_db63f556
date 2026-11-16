@@ -1,0 +1,203 @@
+PROMPT 02 — APLIKASI ADMIN: PENJUALAN & REKONSILIASI
+Salin seluruh isi file ini ke Google AI Studio Build pada proyek kedua.
+Lampirkan kontrak dan berkas backend aktual hasil App 1: SHARED_BACKEND_CONTRACT.md, migrations, database.types.ts, RPC_CONTRACT.md, RLS_ACCESS_MATRIX.md. Jangan lampirkan secret.
+Anda bertindak sebagai product designer, analis administrasi distributor, senior full-stack engineer, dan penguji integrasi. Bangun aplikasi web bernama "Penjualan & Rekonsiliasi". Aplikasi ini memakai backend Supabase yang sama dengan App 1 dan memenuhi kontrak FINOPS_SHARED_V1 di bagian akhir.
+A. Tujuan
+Admin mencatat pengiriman/penjualan, mempertahankan tampilan rekap yang sudah dipakai tim, lalu mencocokkan nota dengan penerimaan terverifikasi dari App 1. Hasil persetujuan mengirim event ke App 3 secara otomatis. Tanggal pengiriman menentukan periode penjualan sesuai kebijakan pengakuan, sedangkan tanggal penerimaan menentukan pergerakan uang.
+Baca skema aktual App 1 lebih dahulu. Jika ada perbedaan dengan kontrak, keluarkan compatibility report dan migrasi tambahan yang aman. Jangan memperbaiki perbedaan dengan menciptakan payments/customers/sales terpisah.
+B. Menu dan tampilan
+Ringkasan Penjualan: penjualan per tanggal kirim, tagihan terbuka, pembayaran menunggu verifikasi, penerimaan tersedia, dokumen perlu direview, selisih dan event akuntansi tertunda.
+Rekap Penjualan: tabel utama yang akrab bagi admin, input manual, bulk import, filter, detail, ekspor.
+Nota & Detail Produk: satu dokumen dengan banyak baris produk, delivery confirmation, harga, koreksi dan histori.
+Pencocokan Pembayaran: daftar penerimaan App 1 di kiri dan nota pelanggan di kanan, nilai alokasi dan sisa keduanya terlihat sebelum submit.
+Rekonsiliasi Almira: antrian review, kasus selisih, alasan keputusan dan audit.
+Piutang Pelanggan: saldo per nota, jatuh tempo, aging dan histori pembayaran; saldo titipan ditampilkan terpisah.
+Impor & Arsip: staging, hasil validasi, batch, baris ditolak, arsip data lama.
+Master: pelanggan, alias pelanggan, produk, satuan, sales, sesuai permission.
+C. Pertahankan persis 14 kolom utama
+Nama dan urutannya wajib:
+DELIVERY DATE | WEEK | MONTH | CUST ID | CUST NAME | PRODUCT | QTY | NET PRICE | TOTAL SALES | SALES NAME | METODE PEMBAYARAN | STATUS PEMBAYARAN | KETERANGAN | REKONSILIASI (ALMIRA)
+Kolom	Arti dan aturan
+DELIVERY DATE	Tanggal barang benar-benar diserahkan/terkonfirmasi; DATE, bukan tanggal pembayaran
+WEEK	Turunan tanggal kirim, default tahun dan minggu ISO; tampilkan definisinya dan dukung format warisan dalam arsip
+MONTH	Turunan YYYY-MM tanggal kirim; nama bulan di UI disertai tahun
+CUST ID	Kode pelanggan teks, unik per badan usaha, nol awal dipertahankan
+CUST NAME	Snapshot nama saat transaksi, terhubung master via CUST ID
+PRODUCT	Produk/SKU dan snapshot nama pada sales_line
+QTY	Kuantitas dengan satuan jelas; lebih dari nol untuk penjualan normal
+NET PRICE	Harga satuan efektif setelah diskon baris sesuai basis pajak yang sudah disahkan
+TOTAL SALES	Nilai baris setelah pembulatan; default QTY × NET PRICE tanpa pajak/diskon tambahan
+SALES NAME	Sales penanggung jawab penjualan; berbeda dari sopir/penagih dan operator input
+METODE PEMBAYARAN	Turunan alokasi aktif: Belum Ada / Transfer / Tunai / Campuran; metode yang direncanakan disimpan terpisah
+STATUS PEMBAYARAN	Turunan Belum Dibayar / Dibayar Sebagian / Lunas; pending verification berupa indikator terpisah
+KETERANGAN	Catatan bisnis, tidak mengubah saldo atau status
+REKONSILIASI (ALMIRA)	Status review + reviewer + waktu + catatan terstruktur; hak review berdasarkan permission
+NET PRICE, TOTAL SALES, serta pajak lama dapat berbeda pengertiannya. Saat setup/impor, minta konfirmasi basis tax-exclusive, tax-inclusive, atau non-tax untuk batch; jangan menebak dari nama produk. Jika nilai sumber tidak cocok dengan formula, pertahankan raw value, tandai selisih, dan minta keputusan reviewer. Jangan diam-diam menimpa total lama.
+Sediakan mode tabel "Rekap 14 Kolom" dan "Detail Operasional". Di mode rekap, 14 kolom tetap di tempatnya. ID nota, ID baris, jatuh tempo, nilai tagihan, jumlah terbayar, sisa piutang, saldo titipan, penagih, status setoran, status jurnal dan lampiran ada dalam detail atau kolom tambahan setelah kolom 14.
+Satu nota dapat mempunyai beberapa produk. Status pembayaran yang sama boleh tampil pada setiap barisnya tetapi total pembayaran/outstanding dihitung hanya sekali per nota. Footer wajib membedakan total sales per baris dengan total tagihan/piutang per dokumen. Join ke banyak pembayaran tidak boleh melipatgandakan QTY atau TOTAL SALES.
+D. Form penjualan dan persetujuan
+Header: nomor nota otomatis, nomor sumber eksternal, tanggal invoice, tanggal kirim, jatuh tempo, pelanggan, cabang, sales, bukti pengiriman/penyerahan, catatan. Lines: SKU, nama snapshot, satuan, qty, net unit price, line rounding, tax code jika aktif. Satu dokumen satu delivery_date; konflik tanggal dalam satu referensi masuk review.
+Draft → validasi → ajukan → reviewer berbeda menyetujui dan mengonfirmasi penyerahan. Tunjukkan jumlah/tagihan dan alasan sebelum final. Penyerahan belum pasti tetap draft/pending_delivery, bukan penjualan yang diakui. Release menghasilkan event revenue dan HPP yang terhubung, dengan tanggal efektif, source_version dan dependency.
+HPP dan harga beli tidak dapat diedit admin penjualan; pembaca HPP dibatasi role. Bila opening stock/cost belum tersedia, data penjualan bisa dicatat sebagai draft atau exception teridentifikasi; jangan memasang HPP nol, inventaris negatif, atau menyatakan laporan final. Mekanisme release/stock costing harus memakai mesin bersama App 3 dan menampilkan hambatan jelas.
+Dokumen yang disetujui tidak diedit in-place. Gunakan amendment/nota kredit/debit/reversal sesuai dampak dan izin, jaga nota asal serta pembayaran terkait. Koreksi catatan nonfinansial dapat berupa append-only note.
+E. Impor CSV/XLSX yang aman
+Impor adalah jalur migrasi/rekap, bukan penghubung utama antar-app.
+Download template 14 kolom asli dan template diperluas dengan NOMOR NOTA, ID BARIS SUMBER, TANGGAL JATUH TEMPO, KODE PRODUK, SATUAN. Jangan mewajibkan pengguna mengubah 14 kolom awal.
+Preview maksimal informatif dengan pagination, pilihan sheet, header mapping, tanggal, pemisah ribuan/desimal, tipe kolom, dan validasi semua baris sebelum commit. Perlakukan tanggal D/M/YY hanya setelah format dikonfirmasi; string ambigu tidak di-parse locale browser.
+Tidak semua file punya nomor nota. Tanpa nomor/ID baris, wajib pilih "setiap baris menjadi dokumen terpisah" atau grouping manual yang dikonfirmasi. Jangan mengelompokkan hanya dari nama pelanggan dan tanggal karena bisa ada beberapa pengiriman.
+CUST ID cocokkan exact lebih dahulu; alias nama membantu usulan. Unknown ID, duplikat ID, SKU tak dikenal, atau satuan tak cocok masuk antrian resolusi master. Fuzzy match tidak otomatis mengganti pelanggan.
+Simpan import_batch_id, file hash, sheet, row number, raw cells, mapping_version, fingerprint, source document ID dan user. Reimport file yang sama idempoten. Fingerprint bukan unique global yang menghapus transaksi sah identik; beda file yang mirip masuk review, bukan ditolak diam-diam.
+Nilai WEEK/MONTH sumber yang berbeda dari derivasi ditampilkan berdampingan. Simpan raw dan nilai operasional yang disahkan.
+Label METODE/STATUS/REKONSILIASI dari file lama bukan bukti pembayaran. Simpan sebagai legacy_source_data. Buat rencana cutover: histori sebelum cutover sebagai arsip non-posting, invoice yang masih terbuka sebagai opening subledger App 3, transaksi setelah cutover sebagai dokumen aktif. Jangan mengarang receipt untuk membuat status Lunas atau menjurnal histori sekaligus saldo awal.
+Beri pilihan ekspor "Rekap Operasional" (status sah terkini) atau "Arsip Sumber" (nilai asal dan label arsip). Tidak mencampurkan angka arsip dan penjualan aktif pada KPI.
+Sediakan laporan baris diterima/ditolak/butuh review dengan alasan. Commit dokumen atomik: satu nota tidak boleh separuh masuk.
+F. Pencocokan many-to-many
+Tampilkan receipt terverifikasi dari database App 1 beserta nominal, tanggal, pelanggan/pengirim, metode, saldo tersedia, bukti sesuai izin dan status custody bila tunai. Nota menampilkan delivery_date, due_date, total dan outstanding.
+Pengguna memilih satu atau beberapa receipt serta nota pelanggan yang sama; isi matriks nominal alokasi. Validasi jumlah per baris/kolom, saldo tersedia dan sisa tagihan di backend. Konfirmasi sebelum mengajukan; reviewer berbeda menyetujui. Payment allocation yang baru diusulkan belum mengurangi AR.
+Satu receipt Rp1.200.000 dapat dialokasikan Rp1.000.000 ke nota A dan Rp200.000 ke nota B. Nota B Rp500.000 masih outstanding Rp300.000; receipt tunai terverifikasi berikutnya Rp300.000 melunasinya. Uang tunai itu boleh masih di penagih, dan tidak boleh membuat pelanggan kembali berutang.
+Kelebihan bayar tetap titipan pelanggan yang dapat dialokasikan ke transaksi berikutnya atau direfund melalui approval App 3. Pembayaran tanpa pelanggan harus diidentifikasi di App 1 lebih dahulu. Perselisihan pembayaran, diskon setelah penjualan, salah rekening, dan potongan pelanggan menjadi kasus review; jangan otomatis menghapus piutang.
+Sediakan pelepasan alokasi dengan alasan dan reviewer, membuat event reversal yang sesuai; histori tetap terlihat. Bila periode terposting sudah ditutup, ikuti prosedur koreksi App 3, bukan edit periode lama.
+G. Review Almira dan tindak lanjut
+Tab: Menunggu Verifikasi Keuangan, Siap Dicocokkan, Alokasi Menunggu Review, Cocok, Selisih, dan Selesai. Kartu kasus menjelaskan sumber masalah dan siapa yang perlu bertindak.
+"Cocok" berarti bukti/identitas/nominal/alokasi telah diperiksa; tidak berarti nota harus sudah lunas. Pelanggan kredit sah dapat selesai direkonsiliasi dengan piutang tetap terbuka. Hak reviewer Almira dikonfigurasi pada user membership; nama kolom ekspor tetap kompatibel. Kasus setoran milik App 1 dapat dilihat lewat tautan, tidak diedit dengan status pembayaran nota.
+H. RPC dan sinkronisasi
+Gunakan backend bersama. Tambahkan draft_sale, submit_sale, approve_and_release_sale, preview_sales_import, commit_sales_import, propose_payment_allocation, approve_payment_allocation, reverse_payment_allocation, save_reconciliation_review, issue_sales_credit_note, get_sales_recap, get_customer_receivable. Seluruh mutasi memeriksa auth, role, company/cabang, version, idempotency dan saldo; nama final serta signature masuk RPC_CONTRACT.md.
+SUM dan saldo berasal dari server read model yang menghindari double join. Tanggal cut-off dipakai untuk laporan historis; pembayaran setelah tanggal laporan tidak boleh membuat nota terlihat lunas pada tanggal sebelumnya. Subscribe changes yang diizinkan dan invalidasi query; refetch bila reconnect.
+I. Kriteria penerimaan
+Input 3 produk dalam satu nota menambah 3 baris rekap, tetapi satu outstanding dokumen.
+Receipt transfer dan cash dari App 1 terlihat tanpa impor ulang.
+Satu pembayaran ke banyak nota dan cicilan satu nota bekerja, tanpa over-allocation bersamaan.
+Kolom Lunas tidak dapat diubah manual atau dipercaya dari file sumber.
+Total penjualan tetap sama setelah join pembayaran dan filter.
+Status tunai Lunas + Uang Masih di Penagih dapat tampil bersamaan.
+Review "Cocok" untuk penjualan kredit tidak memaksa saldo piutang nol.
+Impor ulang file sama tidak menggandakan penjualan; transaksi sah identik bisa dipertahankan setelah review.
+Penjualan terkirim November dibayar Desember tetap berada pada penjualan November dan arus penerimaan Desember.
+Cabang tidak berhak, user tanpa role, dan URL detail tebakan ditolak backend.
+HPP kosong, customer tidak jelas, total tidak sesuai, dan tanggal ambigu tidak dianggap selesai.
+Jalankan pengujian pada database uji dan tampilkan expected/actual; jangan menyatakan lolos hanya karena UI berhasil dirender.
+J. Hasil akhir
+Berikan aplikasi berfungsi, migrasi tambahan, generated types terbaru, kontrak backend yang diperbarui, setup koneksi ke project yang sama, panduan import/cutover, dan UAT. Ketika backend/kontrak aktual belum tersedia, bangun adapter dan tampilkan dependensi setup dengan jujur. Jangan membuat backend pengganti. Pastikan App 1 tetap bekerja setelah perubahan App 2.
+---
+KONTRAK BERSAMA — FINOPS_SHARED_V1
+Versi: 1.0.0 · Tanggal: 16 November 2026
+Berlaku identik untuk tiga aplikasi: Penerimaan & Setoran, Penjualan & Rekonsiliasi, dan Akuntansi & Laporan.
+Dokumen ini adalah keputusan rancangan untuk aplikasi internal distributor. Ini bukan pernyataan bahwa software atau laporan telah memenuhi standar akuntansi tertentu. Sumber teknis dan referensi pelaporan ada pada 07_SUMBER_DAN_ASUMSI.md.
+1. Hasil yang harus dibangun
+Bangun aplikasi operasional yang menyimpan dan membaca data sungguhan. Gunakan satu proyek Supabase/PostgreSQL, satu Supabase Auth, dan satu private Storage untuk seluruh aplikasi. Tiga antarmuka boleh mempunyai URL berbeda; semua memakai project URL, company_id, branch_id, ID master, tabel, dan kontrak API yang sama. Proyek Google AI Studio terpisah tidak otomatis berbagi data.
+Stack pilihan: React + TypeScript, Node.js bila diperlukan, @supabase/supabase-js, PostgreSQL migrations, TanStack Query/Table atau padanan yang sudah tersedia, Zod atau validasi setara, library decimal presisi. Gunakan versi dependensi kompatibel, lockfile, dan dokumentasi resmi saat implementasi. Akuntansi tidak memerlukan panggilan Gemini. Jika menambah saran/OCR, hasilnya selalu usulan yang perlu dikonfirmasi; angka dan jurnal dihitung dengan aturan deterministik.
+Mode awal satu badan usaha, satu cabang, IDR, zona Asia/Jakarta. Nama usaha, produk, cabang, identitas rekening, dan pengguna dikonfigurasi; jangan mengarang data usaha nyata. Siapkan company_id dan branch_id sejak awal untuk pemisahan akses. Laporan gabungan lintas badan usaha, kurs asing, e-Faktur, API bank, payroll, dan gudang kompleks tidak diasumsikan tersedia.
+2. Kepemilikan data dan pembangunan
+App 1 memulai fondasi backend bersama: kontrak skema seluruh domain, autentikasi, izin, master dasar, penerimaan, setoran, dan event ke akuntansi.
+App 2 memakai fondasi itu dan menambahkan implementasi penjualan serta rekonsiliasi tanpa mengganti tabel penerimaan.
+App 3 memakai seluruh data yang sama, melengkapi mesin jurnal, domain akuntansi, dan laporan.
+Migrasi berikutnya bersifat tambahan, bernomor unik, ditinjau dan dijalankan sekali pada database bersama. Simpan versi di schema_migrations dan metadata aplikasi FINOPS_SHARED_V1. Jangan membuat backend kedua, fork tabel per app, atau menjalankan DROP/TRUNCATE untuk mengatasi konflik.
+Paket keluaran App 1 wajib berisi SHARED_BACKEND_CONTRACT.md, supabase/migrations, database.types.ts, RPC_CONTRACT.md, RLS_ACCESS_MATRIX.md, .env.example, SETUP.md, dan UAT.md. Berikan file-file itu sebagai lampiran acuan kepada App 2 dan App 3.
+Kredensial bukan bagian dari lampiran. Isi environment masing-masing proyek dengan URL dan publishable key proyek Supabase yang sama. Jangan meminta secret dikirim lewat chat atau ditulis di prompt.
+3. Nominal, tanggal, dan identitas
+Nilai uang disimpan NUMERIC(20,2); kuantitas NUMERIC(20,6); harga unit NUMERIC(20,6). Pertukarkan angka decimal sebagai string; hitungan otoritatif di PostgreSQL, bukan floating point JavaScript.
+Default IDR tanpa pecahan pada nilai akhir per baris, pembulatan half-up; simpan aturan dan hasil rounding. Total dokumen adalah penjumlahan nilai baris yang telah dibulatkan; selisih pembulatan harus terlihat dan masuk akun yang dikonfigurasi.
+Simpan tanggal operasional sebagai DATE ISO YYYY-MM-DD; waktu audit TIMESTAMPTZ. Tampilkan dd/MM/yyyy dan waktu Asia/Jakarta.
+Pisahkan delivery_date, invoice_date, due_date, customer_paid_at, bank_value_date, deposit_date, verified_at, accounting_date, created_at. Tanggal bayar tidak mengubah tanggal kirim atau tanggal pengakuan penjualan.
+UUID internal, nomor dokumen terbaca, dan nomor dokumen sumber dipisahkan. CUST ID adalah teks sehingga nol awal tetap utuh.
+Nomor dokumen dibuat server dengan unique constraint per company dan tipe dokumen. Semua foreign key memeriksa kesesuaian company, cabang yang diizinkan, dan mata uang.
+Audit created_by, updated_by, approved_by, reason, version, source_app, correlation_id. Optimistic concurrency untuk edit draft. Tidak ada hard-delete transaksi yang sudah disetujui atau diposting.
+4. Model data kanonis
+Gunakan nama tabel berikut atau padanan eksplisit yang dicatat sekali pada kontrak; App 2/3 dilarang membuat padanan baru. Semua tabel bisnis mempunyai company_id dan cabang bila relevan.
+Kelompok	Tabel/relasi minimum
+Akses & master	companies, branches, profiles, memberships, role_permissions, app_settings, customers, customer_aliases, products, product_units, staff, suppliers, fund_accounts
+Penjualan	sales_documents, sales_lines, sales_adjustments, document_links
+Penerimaan	receipts, receipt_evidence, bank_statement_batches, bank_statement_lines, bank_matches
+Alokasi pembayaran	payment_allocations, allocation_approvals
+Refund & transfer	customer_refunds, refund_lines, cash_transfers
+Penguasaan uang	cash_custody_accounts, cash_deposits, cash_deposit_lines, custody_movements, custody_movement_sources
+Review	reconciliation_reviews, discrepancy_cases, approvals, attachments, audit_events
+Integrasi	accounting_events, event_dependencies, idempotency_keys, import_batches, import_rows
+Akuntansi	chart_of_accounts, account_mappings, fiscal_periods, journal_entries, journal_lines, journal_source_links
+Pembelian & stok	purchase_documents, purchase_lines, goods_receipts, goods_receipt_lines, supplier_payments, supplier_allocations, inventory_movements, inventory_valuations
+Domain pendukung	expense_documents, fixed_assets, depreciation_runs, loans, equity_transactions, tax_codes, opening_balances, opening_subledger_items
+Kontrol laporan	report_snapshots, period_close_checks, bank_reconciliations
+sales_documents = satu nota/invoice dengan beberapa sales_lines, satu pelanggan dan satu tanggal pengiriman. Jika referensi invoice yang sama berisi tanggal kirim berbeda, tahan di staging untuk penentuan dokumen pengiriman; jangan gabungkan otomatis. product, quantity, net_unit_price, line_total ada pada baris; payment_allocations menghubungkan receipt dan sales_document, bukan baris produk.
+payments many-to-many: satu penerimaan boleh membayar beberapa nota; satu nota boleh dibayar berkali-kali. cash_deposit_lines menghubungkan setoran dengan sumber custody dan nominal yang diserahkan, bukan menciptakan receipt pelanggan lagi. bank_matches mencocokkan mutasi bank dengan objek receipt, setoran, pengeluaran, atau transfer internal secara eksklusif sesuai nominal; satu mutasi tidak boleh dipakai dua kali.
+5. Tiga dimensi status yang berbeda
+Simpan status terpisah; jangan satu dropdown untuk semua proses:
+Penjualan: draft → diajukan → disetujui/dilepas → dikoreksi melalui dokumen baru.
+Penerimaan: dilaporkan → menunggu verifikasi → terverifikasi / ditolak → dibalik bila diperlukan.
+Setoran: belum diserahkan → diajukan → diterima sebagian / diterima penuh / selisih.
+Rekonsiliasi: belum diperiksa → cocok / perlu ditinjau / selisih → selesai ditinjau.
+Pembukuan: belum siap / perlu konfigurasi → antre → draft jurnal → terposting / gagal / dibalik.
+Status pembayaran nota dihitung server dari alokasi terverifikasi yang telah disetujui. "Lunas" tidak sama dengan "Uang sudah disetor", "Rekonsiliasi selesai", atau "Jurnal terposting". Jangan sediakan edit manual status Lunas.
+6. Arus transfer, uang tunai, dan setoran
+Transfer pelanggan: catat laporan dan bukti; verifikasi kredit pada mutasi rekening perusahaan melalui impor mutasi atau pemeriksaan manual oleh petugas berwenang. Screenshot pelanggan saja tidak otomatis menjadi uang terverifikasi. Tidak ada klaim koneksi bank langsung jika integrasi belum dibuat.
+Tunai: sales/sopir melaporkan pembayaran pelanggan dan siapa yang menguasai uang. Keuangan memeriksa bukti penerimaan/konfirmasi sesuai kebijakan perusahaan dan menyetujui. Sejak penguasaan kas perusahaan oleh penagih dikonfirmasi, catat aset Kas di Penagih. Alokasi terverifikasi boleh melunasi pelanggan walaupun kas belum disetor.
+Setoran: penagih memilih sumber dana dan nominal, penerima menghitung uang sungguhan. Pindahkan hanya nilai yang benar-benar diterima dari Kas di Penagih ke Kas Kantor atau Bank. Setor langsung ke bank diperiksa lewat mutasi dan mengurangi custody penagih; jangan sekaligus membuat transfer pelanggan baru. Setoran parsial meninggalkan saldo di penagih. Kurang setor bukan otomatis piutang pelanggan baru, biaya, atau penghapusan; buat kasus selisih untuk penyelesaian berizin.
+Jika penagih menyatakan Rp1.000.000 tetapi kantor menerima Rp950.000, perpindahan aset yang diterima Rp950.000; Rp50.000 tetap tercatat dalam penguasaan/selisih penagih sampai keputusan resmi. Lebih setor harus mempunyai sumber yang disahkan; jangan menambah penerimaan pelanggan secara diam-diam. Larang netting pengeluaran bensin atau biaya lain terhadap setoran tanpa dokumen pengeluaran dan persetujuan terpisah.
+7. Alokasi dan rekonsiliasi
+Saldo penerimaan tersedia = nominal terverifikasi − alokasi aktif disetujui − refund yang sudah disahkan. Dana sudah dialokasikan yang akan direfund wajib dilepas/dikoreksi melalui dokumen berizin lebih dahulu.
+Outstanding nota = nilai tagihan setelah nota kredit/debit sah − alokasi pembayaran aktif disetujui. Tidak boleh negatif karena alokasi; kelebihan bayar tetap saldo titipan pelanggan.
+Nilai alokasi positif, pelanggan sama, company sama, mata uang sama, nota disetujui, receipt terverifikasi. Dana tanpa identitas pelanggan tidak boleh dialokasikan sebelum identitasnya disahkan.
+Penugasan cabang dan transfer saldo lintas cabang membutuhkan hak eksplisit; default tolak. Satu transfer yang sengaja membayar beberapa pelanggan masuk review pembagian berizin, bukan tebakan nama.
+Saran pencocokan boleh memakai ID pelanggan, nomor nota, nominal, referensi bank, dan rentang tanggal. Tampilkan alasan; manusia menyetujui. Kesamaan nominal atau nama bukan bukti cukup untuk menyetujui otomatis.
+Tahan row locks pada receipt, nota, saldo custody, periode, dan mutasi terkait; urutan lock konsisten. Dua petugas tidak boleh mengalokasikan dana sama melebihi saldo. Retry request sama mengembalikan hasil lama tanpa duplikasi.
+Rekonsiliasi pembayaran ke nota dimiliki App 2. App 1 boleh mengusulkan target nota; jangan membuat ledger alokasi kedua.
+Label ekspor "REKONSILIASI (ALMIRA)" dipertahankan. Almira adalah default label penanggung jawab yang dapat diubah, bukan akun/login atau otorisasi hardcoded.
+8. Jurnal yang konsisten dan pengakuan pendapatan
+Gunakan basis akrual. Status disetujui saja tidak cukup mengakui pendapatan: tanggal dan bukti penyerahan barang/kewajiban usaha harus diperiksa. Untuk asumsi distributor sederhana, delivery_date yang dikonfirmasi adalah tanggal pengakuan; transaksi berbeda kebijakan ditahan untuk akuntan.
+Rancangan akun default dapat dipetakan ulang sebelum aktivasi:
+1101 Kas Kantor; 1102 Kas di Penagih; 1103 Bank; 1104 Piutang Usaha; 1105 Persediaan; 1201 Aset Tetap; 1202 Akumulasi Penyusutan; 2101 Utang Usaha; 2102 Uang Muka/Titipan Pelanggan; 2103 Penerimaan Belum Teridentifikasi; 2106 GRNI; 2107 Utang Biaya; 2201 Pinjaman; 3101 Modal; 3102 Saldo Laba; 3103 Prive/Distribusi; 4101 Penjualan; 4102 Retur/Potongan Penjualan; 5101 HPP; 610x Biaya Operasional; 6201 Penyusutan; 6301 Beban Selisih Kas disahkan; akun pajak dan rounding dikonfigurasi.
+Peristiwa	Debit	Kredit
+Penyerahan barang / penjualan kredit	Piutang Usaha	Penjualan dan kewajiban pajak bila berlaku
+HPP barang yang diserahkan	HPP	Persediaan
+Transfer pelanggan terverifikasi, identitas diketahui	Bank	Titipan Pelanggan
+Tunai pelanggan terverifikasi dikuasai penagih	Kas di Penagih	Titipan Pelanggan
+Pembayaran terverifikasi dialokasikan ke nota	Titipan Pelanggan	Piutang Usaha
+Dana terverifikasi belum diketahui pengirimnya	Kas/Bank terkait	Penerimaan Belum Teridentifikasi
+Identitas penerimaan disahkan	Penerimaan Belum Teridentifikasi	Titipan Pelanggan
+Setoran penagih diterima kantor	Kas Kantor	Kas di Penagih
+Setoran langsung penagih masuk bank	Bank	Kas di Penagih
+Kas kantor dimasukkan ke bank	Bank	Kas Kantor
+Barang diterima sebelum invoice pemasok	Persediaan	GRNI
+Invoice pemasok atas barang sudah diterima	GRNI, selisih harga/pajak sesuai kebijakan	Utang Usaha
+Invoice dan penerimaan barang bersamaan	Persediaan	Utang Usaha
+Pembayaran pemasok	Utang Usaha	Kas/Bank
+Beban telah terjadi belum dibayar	Biaya terkait	Utang Biaya
+Pembayaran beban yang telah diakrualkan	Utang Biaya	Kas/Bank
+Biaya langsung dibayar tanpa akrual sebelumnya	Biaya terkait	Kas/Bank
+Penambahan aset tetap	Aset Tetap	Kas/Bank atau Utang
+Penyusutan	Beban Penyusutan	Akumulasi Penyusutan
+Modal disetor	Kas/Bank	Modal
+Pinjaman diterima	Kas/Bank	Pinjaman
+Pelunasan pokok pinjaman	Pinjaman	Kas/Bank
+Refund titipan belum dialokasikan	Titipan Pelanggan	Kas/Bank
+Jalur titipan di atas sengaja digunakan konsisten agar penerimaan sebelum nota dan pembayaran berlebih tetap tercatat. Penerimaan + alokasi boleh terjadi pada transaksi server yang sama jika semua persetujuan sah; jurnal masing-masing tetap unik. Jangan sekali lagi mengkredit penjualan saat menerima uang atau setoran.
+Retur perlu nota kredit. Bila tagihan masih ada, kurangi piutang melalui nota kredit; kelebihan yang harus dikembalikan menjadi kewajiban refund, lalu pembayaran refund mengurangi kewajiban itu. Pengembalian stok/HPP hanya untuk barang benar-benar diterima dan layak dijual dengan biaya asal yang terlacak. Pembatalan pembayaran bukan pembatalan penjualan.
+9. Mesin pembukuan terpusat
+Semua RPC persetujuan sumber menulis accounting_events dalam transaksi database yang sama dengan perubahan sumber. Event mempunyai event_type, source_type/id/version, effective_date, immutable payload snapshot, mapping_version, dependency_ids, processing_status, error, dan unique(company_id, event_type, source_id, source_version). Event tidak boleh hilang bila App 3 belum dibangun; statusnya "Menunggu modul akuntansi".
+Satu mesin jurnal di database/backend bersama melayani semua app. Jalankan worker terjadwal/trigger server yang benar-benar dikonfigurasi; bukan useEffect atau tab App 3 harus terbuka. Default membentuk draft jurnal. Auto-post baru boleh diaktifkan akuntan setelah mapping, saldo awal, kebijakan, dan pengujian disahkan; manual journals tetap butuh approval. Sediakan retry idempoten dan pemantauan event gagal.
+Untuk penjualan barang stok, pendapatan dan HPP terkait wajib terposting dalam satu transaksi database; jangan membiarkan revenue posted sementara HPP gagal atau belum diketahui. Event dapat terpisah untuk pelacakan, tetapi grup posting penjualan harus atomik.
+RPC posting mengunci event, sumber/dependensi, dan fiscal_period; memeriksa izin, maker-checker, periode terbuka, mapping aktif, saldo subledger, HPP, pajak, dan debit=kredit. Satu transaksi atomik menulis header, semua journal_lines, tautan sumber, audit, serta status posted. Kegagalan harus rollback semua. Unique source event mencegah jurnal kedua.
+Journal posted tidak dapat diedit/dihapus. Koreksi memakai reversal/reclassification/nota koreksi dengan alasan, approver dan referensi asal. Reversal alokasi, receipt, atau sale harus memperhatikan seluruh dependensi; tidak boleh membalik receipt yang masih dialokasikan/refund atau sale yang masih terikat tanpa rencana penyelesaian atomik.
+Tanggal efektif berbeda dari accounting_date. Jika periode sumber sudah dikunci, tahan ke exception; akuntan memilih reopening berizin atau jurnal koreksi pada periode terbuka dengan tanggal sumber tetap terlihat. Jangan menggeser tanggal diam-diam.
+10. Keamanan yang diterapkan pada backend
+Supabase Auth dengan undangan pengguna; login tidak otomatis memberi akses perusahaan. Membership dan permission ditetapkan administrator berwenang lewat backend. Tidak ada pemilihan role saat login atau perubahan role dari browser.
+finance_maker: input penerimaan/setoran dan usulan koreksi.
+finance_checker: verifikasi penerimaan, penerimaan setoran dan keputusan terkait.
+sales_admin: draft/import penjualan dan usulan alokasi.
+reconciliation_reviewer: menyetujui penjualan/alokasi/review sesuai permission; label awal Almira.
+accountant: konfigurasi akun, pembelian/biaya, draft jurnal, pemeriksaan laporan.
+accounting_approver: persetujuan jurnal, kebijakan auto-post, tutup/buka periode.
+owner_viewer: laporan dan drill-down terbatas tanpa mutasi.
+system_admin: akses/konfigurasi teknis; tidak otomatis boleh menyetujui transaksi.
+collector_optional: bila akun sales/sopir diaktifkan, hanya laporan dan custody sendiri.
+Maker tidak menyetujui dokumen buatannya sendiri. Pengguna boleh memegang beberapa peran tetapi larangan approval sendiri tetap berlaku untuk dokumen tersebut. Membership company/cabang diperiksa pada semua RPC dan setiap ID objek. Batasi akses bank/bukti dan laporan biaya/HPP sesuai kebutuhan role.
+Aktifkan RLS dan grants minimum pada tabel terpapar; view memakai security_invoker atau read RPC yang memeriksa scope. Lindungi aggregates, ekspor, Realtime, dan signed attachment URLs dengan scope yang sama. Anonymous ditolak. Mutasi keuangan, approvals, allocation, event, jurnal dan perubahan membership tidak boleh direct-write dari klien; lewat fungsi transaksi berizin. Helper SECURITY DEFINER berada pada schema private, search_path kosong, nama objek qualified, permission objek diperiksa eksplisit, EXECUTE dicabut dari PUBLIC/anon dan diberikan minimum. Exposed wrappers tidak boleh menjadi jalan bypass RLS. Rahasiakan database password, Supabase secret/service-role key pada server; browser hanya URL dan publishable key serta token user, tetap dengan RLS.
+Bukti private Storage; batasi tipe/ukuran file, hash untuk deteksi duplikat, signed URL berumur singkat, path berisi company dan document ID. Jangan simpan bukti bank di bucket publik. Audit append-only bagi role aplikasi; tidak mengklaim kebal perubahan DBA.
+11. Sinkronisasi dan gangguan
+Realtime hanya memberi sinyal invalidasi cache atas data yang boleh dilihat; data otoritatif dibaca ulang dari server. Aktifkan publikasi dan izin secara eksplisit serta fallback polling/refetch untuk koneksi pulih. Tampilkan waktu pembaruan dan status koneksi. Multi-tab/app tidak boleh mengandalkan localStorage untuk transaksi.
+Jika koneksi putus, formulir dapat menyimpan draft lokal yang ditandai jelas, tetapi jangan mengklaim sudah terkirim/terverifikasi. Jangan mengirim ulang transaksi final tanpa idempotency key. Jika environment belum lengkap, tampilkan halaman setup untuk administrator dan status layanan untuk pengguna biasa. Demo hanya mode terpisah dengan data sintetis, banner "DEMO", dan tanpa akses database produksi. Tidak ada fallback ke mock yang terlihat seperti data nyata.
+12. UI yang mudah dipakai
+Bahasa Indonesia sederhana, IDR, pencarian nota/pelanggan/nominal, filter periode/cabang/petugas, tabel dengan sorting dan pagination, detail di drawer, badge berlabel teks, akses keyboard, kontras terbaca, loading/error/empty/permission states. Menu antar-app melalui app_settings URLs, jangan mengarang tautan.
+Gunakan nama aplikasi sesuai fungsinya; bukan NADIQ kecuali diminta. Visual profesional sederhana: latar terang, navy/slate, aksen teal, amber untuk menunggu, merah untuk selisih. Utamakan tabel dan langkah kerja, grafik hanya bila membantu keputusan. Tooltip menjelaskan perbedaan tanggal, saldo titipan, uang di penagih, dan status jurnal. Pengguna operasional tidak melihat jargon database atau schema.
+Semua aksi utama harus berfungsi: tambah, validasi, simpan, ajukan, setujui, tolak dengan alasan, lihat bukti, koreksi, cari, filter, ekspor dan cetak sesuai hak. Tidak ada tombol palsu, angka dashboard hardcoded, atau toast sukses sebelum server mengonfirmasi.
+13. Definisi selesai
+Buktikan lintas tiga aplikasi: satu company/customer/nota/receipt memakai ID yang sama; refresh/login lain tetap melihat hasil sesuai izin; source → allocation → accounting_event → journal → report dapat ditelusuri dua arah. Jalankan typecheck/build serta uji integrasi domain, keamanan, concurrency, idempotency, rollback, tanggal, impor, reversal dan periode. Jika environment tidak tersedia, laporkan test yang belum dijalankan; jangan menyatakan produksi siap atau tes lulus tanpa bukti.
