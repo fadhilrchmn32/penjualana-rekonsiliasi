@@ -98,6 +98,9 @@ function FinOpsAppShell() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
+  // Demo role tracking (ensures sessionQuery key & all role-guarded queries update immediately)
+  const [demoUserId, setDemoUserId] = useState<string>(() => demoGateway.getDemoUsers()[0].userId);
+
   // Filters & active selections
   const [activeBranchFilter, setActiveBranchFilter] = useState<string>('');
   const [cutoffDate, setCutoffDate] = useState<string>('');
@@ -111,10 +114,14 @@ function FinOpsAppShell() {
 
   // Session query
   const sessionQuery = useQuery({
-    queryKey: ['session', mode],
+    queryKey: ['session', mode, mode === 'demo_isolated' ? demoUserId : 'live'],
     enabled: gateway !== null,
+    placeholderData: (previousData) => (mode === 'demo_isolated' ? previousData : undefined),
     queryFn: async () => {
       if (!gateway) return null;
+      if (mode === 'demo_isolated') {
+        demoGateway.switchDemoUser(demoUserId);
+      }
       return gateway.getSession();
     },
   });
@@ -330,7 +337,16 @@ function FinOpsAppShell() {
     setLastSyncedAt(new Date().toISOString());
   };
 
+  const handleSwitchDemoRole = async (nextUserId: string) => {
+    demoGateway.switchDemoUser(nextUserId);
+    setDemoUserId(nextUserId);
+    setActiveBranchFilter('');
+    await qc.invalidateQueries();
+    setLastSyncedAt(new Date().toISOString());
+  };
+
   const handleEnterDemo = () => {
+    demoGateway.switchDemoUser(demoUserId);
     setMode('demo_isolated');
     setActiveRoute('ringkasan');
     qc.invalidateQueries();
@@ -518,21 +534,18 @@ function FinOpsAppShell() {
     );
   }
 
-  const canViewHpp =
-    mode === 'demo_isolated'
-      ? demoGateway.canViewHpp()
-      : Boolean(
-          session?.roles.some((r) =>
-            [
-              'accountant',
-              'accounting_approver',
-              'reconciliation_reviewer',
-              'finance_checker',
-              'owner_viewer',
-              'system_admin',
-            ].includes(r)
-          )
-        );
+  const canViewHpp = Boolean(
+    session?.roles.some((r) =>
+      [
+        'accountant',
+        'accounting_approver',
+        'reconciliation_reviewer',
+        'finance_checker',
+        'owner_viewer',
+        'system_admin',
+      ].includes(r)
+    )
+  );
 
   const canCreateNota = Boolean(
     session?.roles.some((r) => ['sales_admin', 'reconciliation_reviewer'].includes(r))
@@ -648,6 +661,24 @@ function FinOpsAppShell() {
               </span>
             ))}
           </div>
+          {mode === 'demo_isolated' && (
+            <div className="mt-2.5 pt-2 border-t border-slate-700">
+              <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">
+                Ganti Role Demo
+              </label>
+              <select
+                value={demoUserId}
+                onChange={(e) => void handleSwitchDemoRole(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-600 text-slate-100 rounded px-2 py-1 text-[11px]"
+              >
+                {demoGateway.getDemoUsers().map((u) => (
+                  <option key={u.userId} value={u.userId}>
+                    {u.fullName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {mode === 'live_supabase' && (
@@ -678,12 +709,8 @@ function FinOpsAppShell() {
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-[11px] text-amber-200">Uji Peran:</label>
             <select
-              value={session?.userId || ''}
-              onChange={(e) => {
-                demoGateway.switchDemoUser(e.target.value);
-                setActiveBranchFilter('');
-                invalidateAll();
-              }}
+              value={demoUserId}
+              onChange={(e) => void handleSwitchDemoRole(e.target.value)}
               className="bg-amber-900 border border-amber-700 text-white rounded px-2 py-1 text-xs"
             >
               {demoGateway.getDemoUsers().map((u) => (
